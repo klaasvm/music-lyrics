@@ -63,6 +63,8 @@ class _MyHomePageState extends State<MyHomePage> {
   String? _syncedLyrics;
   String _currentLyricLine = "";
   bool _isLoadingLyrics = false;
+  int _lyricOffset = 0; // Offset in milliseconden voor kalibratie
+  bool _showCalibration = false;
   
   // Spotify API credentials
   static const String _clientId = "3b43c51d3d3c4ee9b1620afaa9be69de";
@@ -315,7 +317,8 @@ class _MyHomePageState extends State<MyHomePage> {
         
         final timeMs = (minutes * 60 * 1000) + (seconds * 1000) + (centiseconds * 10);
         
-        if (_localProgressMs >= timeMs) {
+        // Pas de offset toe voor kalibratie
+        if ((_localProgressMs + _lyricOffset) >= timeMs) {
           newLyricLine = text;
         } else {
           break;
@@ -448,6 +451,172 @@ class _MyHomePageState extends State<MyHomePage> {
                 size: 20,
                 color: Colors.grey,
               ),
+            ),
+          ),
+          
+          // Calibration button and controls
+          Positioned(
+            bottom: 8,
+            right: 8,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (_showCalibration) ...[
+                  // Calibration controls
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black87,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Kalibratie: ${_lyricOffset}ms',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // -100ms button
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _lyricOffset -= 100;
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(0.7),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  '-100ms',
+                                  style: TextStyle(color: Colors.white, fontSize: 8),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            // -10ms button
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _lyricOffset -= 10;
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withOpacity(0.7),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  '-10ms',
+                                  style: TextStyle(color: Colors.white, fontSize: 8),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // +10ms button
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _lyricOffset += 10;
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withOpacity(0.7),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  '+10ms',
+                                  style: TextStyle(color: Colors.white, fontSize: 8),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            // +100ms button
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _lyricOffset += 100;
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.7),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  '+100ms',
+                                  style: TextStyle(color: Colors.white, fontSize: 8),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        // Reset button
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _lyricOffset = 0;
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.withOpacity(0.7),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'Reset',
+                              style: TextStyle(color: Colors.white, fontSize: 8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                // Calibration toggle button
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _showCalibration = !_showCalibration;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: _showCalibration ? Colors.green.withOpacity(0.8) : Colors.grey.withOpacity(0.8),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(
+                      Icons.tune,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
