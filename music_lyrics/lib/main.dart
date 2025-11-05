@@ -60,8 +60,8 @@ class _MyHomePageState extends State<MyHomePage> {
   int _countdown = 5;
   int _localProgressMs = 0;
   int _lastUpdateTime = 0;
-  String? _syncedLyrics;
-  String _currentLyricLine = "";
+  List<Map<String, dynamic>> _lyricLines = [];
+  int _currentLyricIndex = -1;
   bool _isLoadingLyrics = false;
   int _lyricOffset = 0; // Offset in milliseconden voor kalibratie
   bool _showCalibration = false;
@@ -276,33 +276,36 @@ class _MyHomePageState extends State<MyHomePage> {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        setState(() {
-          _syncedLyrics = data['syncedLyrics'];
-          _isLoadingLyrics = false;
-        });
+        final syncedLyrics = data['syncedLyrics'];
+        
+        if (syncedLyrics != null && syncedLyrics.isNotEmpty) {
+          _parseLyrics(syncedLyrics);
+        } else {
+          setState(() {
+            _lyricLines = [];
+            _currentLyricIndex = -1;
+            _isLoadingLyrics = false;
+          });
+        }
       } else {
         setState(() {
-          _syncedLyrics = null;
-          _currentLyricLine = "Geen songteksten gevonden";
+          _lyricLines = [];
+          _currentLyricIndex = -1;
           _isLoadingLyrics = false;
         });
       }
     } catch (e) {
       setState(() {
-        _syncedLyrics = null;
-        _currentLyricLine = "Fout bij ophalen songteksten";
+        _lyricLines = [];
+        _currentLyricIndex = -1;
         _isLoadingLyrics = false;
       });
     }
   }
 
-  void _updateCurrentLyric() {
-    if (_syncedLyrics == null || _syncedLyrics!.isEmpty) {
-      return;
-    }
-
-    final lines = _syncedLyrics!.split('\n');
-    String newLyricLine = "";
+  void _parseLyrics(String syncedLyrics) {
+    final lines = syncedLyrics.split('\n');
+    final parsedLines = <Map<String, dynamic>>[];
     
     for (String line in lines) {
       if (line.trim().isEmpty) continue;
@@ -317,18 +320,41 @@ class _MyHomePageState extends State<MyHomePage> {
         
         final timeMs = (minutes * 60 * 1000) + (seconds * 1000) + (centiseconds * 10);
         
-        // Pas de offset toe voor kalibratie
-        if ((_localProgressMs + _lyricOffset) >= timeMs) {
-          newLyricLine = text;
-        } else {
-          break;
-        }
+        parsedLines.add({
+          'timeMs': timeMs,
+          'text': text,
+        });
+      }
+    }
+    
+    setState(() {
+      _lyricLines = parsedLines;
+      _currentLyricIndex = -1;
+      _isLoadingLyrics = false;
+    });
+  }
+
+  void _updateCurrentLyric() {
+    if (_lyricLines.isEmpty) {
+      return;
+    }
+
+    int newCurrentIndex = -1;
+    final adjustedProgress = _localProgressMs + _lyricOffset;
+    
+    for (int i = 0; i < _lyricLines.length; i++) {
+      final timeMs = _lyricLines[i]['timeMs'];
+      
+      if (adjustedProgress >= timeMs) {
+        newCurrentIndex = i;
+      } else {
+        break;
       }
     }
 
-    if (newLyricLine != _currentLyricLine) {
+    if (newCurrentIndex != _currentLyricIndex) {
       setState(() {
-        _currentLyricLine = newLyricLine;
+        _currentLyricIndex = newCurrentIndex;
       });
     }
   }
@@ -345,6 +371,117 @@ class _MyHomePageState extends State<MyHomePage> {
     final durationSecond = (durationMs % 60000) ~/ 1000;
     
     return '${progressMin}:${progressSec.toString().padLeft(2, '0')} / ${durationMin}:${durationSecond.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildLyricsDisplay() {
+    if (_lyricLines.isEmpty) {
+      return Text(
+        _currentTrack != null 
+            ? 'Geen songteksten beschikbaar' 
+            : _status,
+        style: const TextStyle(
+          fontSize: 16,
+          color: Colors.grey,
+        ),
+        textAlign: TextAlign.center,
+      );
+    }
+
+    // Toon alleen 3 regels: 1 vorige, huidige, 1 volgende
+    final List<Widget> lyricWidgets = [];
+    
+    for (int i = -1; i <= 1; i++) {
+      final lineIndex = _currentLyricIndex + i;
+      final isCurrentLine = i == 0;
+      
+      if (lineIndex >= 0 && lineIndex < _lyricLines.length) {
+        lyricWidgets.add(
+          TweenAnimationBuilder<double>(
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeOutCubic,
+            tween: Tween(
+              begin: isCurrentLine ? 0.0 : 1.0,
+              end: isCurrentLine ? 1.0 : 0.0,
+            ),
+            builder: (context, value, child) {
+              final opacity = isCurrentLine 
+                  ? 0.3 + (0.7 * value) // Van 0.3 naar 1.0 voor huidige
+                  : 0.7 - (0.4 * value); // Van 0.7 naar 0.3 voor anderen
+              
+              final scale = isCurrentLine 
+                  ? 0.95 + (0.1 * value) // Van 0.95 naar 1.05 voor huidige
+                  : 1.0 - (0.05 * value); // Van 1.0 naar 0.95 voor anderen
+              
+              final offsetY = isCurrentLine 
+                  ? 5.0 * (1.0 - value) // Van 5 naar 0 voor huidige
+                  : i * 3.0 * value; // Beweeg anderen weg van centrum
+              
+              return Transform.translate(
+                offset: Offset(0, offsetY),
+                child: Transform.scale(
+                  scale: scale,
+                  child: Opacity(
+                    opacity: opacity.clamp(0.0, 1.0),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        vertical: isCurrentLine ? 6.0 : 3.0,
+                        horizontal: 12.0,
+                      ),
+                      child: Text(
+                        _lyricLines[lineIndex]['text'],
+                        style: TextStyle(
+                          fontSize: isCurrentLine ? 16.0 : 12.0,
+                          fontWeight: isCurrentLine ? FontWeight.w600 : FontWeight.w400,
+                          color: Colors.white,
+                          height: 1.1,
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      } else {
+        // Lege ruimte voor niet-bestaande regels
+        lyricWidgets.add(
+          Container(
+            height: 35.0,
+          ),
+        );
+      }
+    }
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      switchInCurve: Curves.easeInOutCubic,
+      switchOutCurve: Curves.easeInOutCubic,
+      transitionBuilder: (child, animation) {
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.3),
+            end: const Offset(0, 0),
+          ).animate(CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          )),
+          child: FadeTransition(
+            opacity: animation,
+            child: child,
+          ),
+        );
+      },
+      child: Column(
+        key: ValueKey(_currentLyricIndex),
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: lyricWidgets,
+      ),
+    );
   }
 
   @override
@@ -365,23 +502,25 @@ class _MyHomePageState extends State<MyHomePage> {
                     Text(
                       _currentTrack!['track_name'],
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 12,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
                       textAlign: TextAlign.center,
                       overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                     Text(
                       _currentTrack!['artists'],
                       style: const TextStyle(
-                        fontSize: 14,
+                        fontSize: 10,
                         color: Colors.grey,
                       ),
                       textAlign: TextAlign.center,
                       overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
                   ],
                   
                   // Main lyrics display
@@ -399,19 +538,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                 ),
                               ],
                             )
-                          : Text(
-                              _currentLyricLine.isEmpty 
-                                  ? (_currentTrack != null 
-                                      ? 'Geen songteksten beschikbaar' 
-                                      : _status)
-                                  : _currentLyricLine,
-                              style: TextStyle(
-                                fontSize: _currentLyricLine.isEmpty ? 16 : 24,
-                                fontWeight: FontWeight.bold,
-                                color: _currentLyricLine.isEmpty ? Colors.grey : Colors.white,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
+                          : _buildLyricsDisplay(),
                     ),
                   ),
                   
@@ -420,16 +547,16 @@ class _MyHomePageState extends State<MyHomePage> {
                     Text(
                       _formatProgress(),
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 8,
                         color: Colors.grey,
                       ),
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 2),
                   ],
                   Text(
                     'Update over: ${_countdown}s',
                     style: TextStyle(
-                      fontSize: 10,
+                      fontSize: 8,
                       color: _countdown <= 2 ? Colors.orange : Colors.grey,
                     ),
                   ),
